@@ -1,3 +1,11 @@
 config.log
 bin*gnu
 lib*gnu
+obj*gnu
+config.status
+config/config
+config/system.mak
+python/build/
+scripts_pl/sphinxDocGen.sh
+make.depend
+.build_lib
