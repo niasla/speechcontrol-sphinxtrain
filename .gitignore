@@ -10,3 +10,5 @@ scripts_pl/sphinxDocGen.sh
 make.depend
 .build_lib
 *.kdev4
+.pc
+debian
