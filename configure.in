@@ -1,0 +1,163 @@
+dnl Welcome to the Sphinx automated build system.
+dnl try not to hurt yourself ;)
+
+AC_INIT(SphinxTrain, 1.0.7)
+
+AC_CANONICAL_HOST
+AC_PROG_CC
+if test "x$GCC" = "xyes"; then
+	CFLAGS="$CFLAGS -Wall"
+fi
+AC_PROG_CXX
+AC_PROG_RANLIB
+AC_CHECK_TOOL(AR, ar)
+
+AC_C_BIGENDIAN
+
+AC_CHECK_LIB(m, log)
+AC_CHECK_LIB(g2c, d_log)
+
+AC_PATH_PROGS(PERL, [perl5 perl])
+if test "x$PERL" = x; then
+	cat <<\EOF
+*** Could not find 'perl' or 'perl5' on your system.
+*** If you know the location of your Perl 5 binary, please set the
+*** PERL environment variable to it and re-run ./configure.
+*** For example:
+
+$ env PERL=/path/to/your/perl5 ./configure
+EOF
+	exit 1
+fi
+
+AC_PATH_PROG(FESTIVAL, festival, /usr/bin/festival,
+  $PATH:/bin:/usr/bin:/usr/local/bin:/usr/local/festival/bin:/opt/festival/bin:/usr0/festival/bin)
+if test "x$FESTIVAL" = x; then
+	cat <<\EOF
+*** Could not find the Festival binary on your system.
+*** Please set the FESTIVAL environment variable and re-run
+*** ./configure.  For example:
+$ env FESTIVAL=/path/to/festival ./configure
+EOF
+	exit 1
+fi
+
+dnl Use PIC on x86_64, as we can't build Perl/Python modules otherwise
+dnl (and it isn't much slower unlike on register-starved i386)
+case $host_cpu in
+     x86_64*)
+	CFLAGS="$CFLAGS -fPIC -DPIC"
+	;;
+esac
+
+dnl
+dnl Get SphinxBase source from command line if given
+dnl
+AC_ARG_WITH(sphinxbase,
+	AS_HELP_STRING([--with-sphinxbase=DIRECTORY],
+			[Look for SphinxBase source files in DIRECTORY.  If this is 'auto',
+			 the system-wide installation will be used.]),
+			sphinxbase=$withval)
+
+dnl
+dnl Get SphinxBase build directory from command line if given
+dnl
+AC_ARG_WITH(sphinxbase-build,
+	AS_HELP_STRING([--with-sphinxbase-build=DIRECTORY],
+			[Look for SphinxBase object files in DIRECTORY]),
+	sphinxbasebuild=$withval)
+
+
+dnl
+dnl Check for SphinxBase in parent directories
+dnl
+if test x$sphinxbase = x; then
+   dn=`dirname $0`
+   case "$dn" in
+	.)
+	sbdir="`pwd`/.."
+	;;
+	[\\/]* | ?:[\\/]*)
+	sbdir="$dn/.."
+	;;
+	*)
+	sbdir="`pwd`/$dn/.."
+	;;
+   esac
+   # Look for sphinxbase in the parent directory
+   for sb in "$sbdir/sphinxbase" \
+	  "$sbdir/sphinxbase"*; do
+       AC_MSG_CHECKING([for sphinxbase in $sb])
+       if test -f "$sb/include/sphinxbase/cmd_ln.h"; then
+          sphinxbase="$sb"
+	  AC_MSG_RESULT(yes)
+	  break
+       else
+	  AC_MSG_RESULT(no)
+       fi
+   done
+fi
+
+dnl
+dnl Check for system SphinxBase if none was passed to us
+dnl Also allow --with-sphinxbase=auto to use system one explicitly
+dnl
+if test x$sphinxbase = x || test x$sphinxbase = xauto; then
+   sphinxbase=
+   if test "x$HAVE_PKGCONFIG" = "xno"; then
+      SphinxBase_CFLAGS = "-Iusr/include/sphinxbase -I/usr/local/include/sphinxbase"
+      SphinxBase_LIBS = "-lsphinxbase"
+   else
+      PKG_CHECK_MODULES(SphinxBase, [sphinxbase],,[
+      AC_MSG_FAILURE(dnl
+[SphinxBase was not found in the parent directories or
+installed system-wide on your system.  Make sure that
+you have compiled it or installed it and that the
+PKG_CONFIG_PATH environment variable is set correctly, if
+it was installed in a non-standard prefix.])])
+   fi
+   LIBS="$LIBS $SphinxBase_LIBS"
+   CPPFLAGS="$CPPFLAGS $SphinxBase_CFLAGS"
+   AC_CHECK_HEADER(sphinx_config.h,,[
+   AC_MSG_FAILURE(dnl
+[SphinxBase was not found on your system.])])
+fi
+
+dnl
+dnl Now verify SphinxBase if defined
+dnl Sadly, this doesn't work when cross-compiling (for some dumb reason...)
+dnl
+: ${sphinxbasebuild=$sphinxbase}
+if test x$sphinxbase != x && test x$cross_compiling = xyes; then
+   CPPFLAGS="-I$sphinxbase/include -I$sphinxbasebuild/include $CPPFLAGS"
+   LIBS="$LIBS -lsphinxbase"
+   # We include libsphinxbase/.libs because of stupid broken versions of libtool
+   LDFLAGS="$LDFLAGS -L$sphinxbasebuild/src/libsphinxad \
+		     -L$sphinxbasebuild/src/libsphinxbase \
+		     -L$sphinxbasebuild/src/libsphinxbase/.libs"
+fi
+if test x$sphinxbase != x && test x$cross_compiling != xyes; then
+   AC_CHECK_FILE($sphinxbase/include/sphinxbase/prim_type.h,CPPFLAGS="-I$sphinxbase/include $CPPFLAGS",
+   AC_ERROR(
+[SphinxBase headers not found in $sphinxbase.  Please use the
+--with-sphinxbase option to `configure' to specify the location of
+SphinxBase.  Run $0 --help for more information.]))
+fi
+# We include libsphinxbase/.libs because of stupid broken versions of libtool
+if test x$sphinxbasebuild != x && test x$cross_compiling != xyes; then
+   AC_CHECK_FILE($sphinxbasebuild/src/libsphinxbase/libsphinxbase.la,
+[CPPFLAGS="-I$sphinxbasebuild/include $CPPFLAGS"
+LIBS="$LIBS -lsphinxbase"
+LDFLAGS="$LDFLAGS -L$sphinxbasebuild/src/libsphinxad \
+		  -L$sphinxbasebuild/src/libsphinxbase \
+		  -L$sphinxbasebuild/src/libsphinxbase/.libs"],
+		   AC_ERROR(
+[SphinxBase libraries were not found in $sphinxbasebuild.
+Use the --with-sphinxbase-build option to `configure' to specify
+the build directory for SphinxBase.  Run $0 --help for more information.]))
+fi
+
+AC_SUBST(sphinxbase)
+AC_SUBST(sphinxbasebuild)
+
+AC_OUTPUT([config/config config/system.mak scripts_pl/sphinxDocGen.sh])
